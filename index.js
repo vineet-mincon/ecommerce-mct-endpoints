@@ -3,7 +3,85 @@ require("dotenv").config();
 const express = require("express");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
+const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
+const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
+const { z } = require("zod");
 const { callEbayApi, callEbayTradingApi } = require("./ebayClient");
+
+// ─── MCP Server ───────────────────────────────────────────────────────────────
+
+const mcpServer = new McpServer({
+  name: "ecommerce-mct-endpoints",
+  version: "1.0.0",
+});
+
+mcpServer.registerTool(
+  "ebay_api",
+  {
+    title: "eBay API Proxy",
+    description: "Call any eBay REST API endpoint. Uses a cached OAuth token auto-refreshed from EBAY_REFRESH_TOKEN.",
+    inputSchema: z.object({
+      method: z.enum(["GET", "POST", "PUT", "DELETE"]),
+      path: z.string().regex(/^\//, "path must start with /"),
+      body: z.record(z.unknown()).optional(),
+    }),
+  },
+  async ({ method, path, body }) => {
+    const result = await callEbayApi(method, path, body);
+    return { content: [{ type: "text", text: JSON.stringify(result) }] };
+  }
+);
+
+mcpServer.registerTool(
+  "ebay_trading_api",
+  {
+    title: "eBay Trading API Proxy",
+    description: "Call any eBay Trading API (XML SOAP) operation. XML envelope is built automatically.",
+    inputSchema: z.object({
+      callName: z.string().min(1),
+      params: z.record(z.unknown()).optional(),
+    }),
+  },
+  async ({ callName, params }) => {
+    const result = await callEbayTradingApi(callName, params ?? {});
+    return { content: [{ type: "text", text: JSON.stringify(result) }] };
+  }
+);
+
+mcpServer.registerTool(
+  "amazon_orders",
+  {
+    title: "Amazon Orders (coming soon)",
+    description: "Proxy for Amazon orders API. Not yet implemented.",
+    inputSchema: z.object({}),
+  },
+  async () => {
+    return { content: [{ type: "text", text: "coming soon" }] };
+  }
+);
+
+mcpServer.registerTool(
+  "amazon_listings",
+  {
+    title: "Amazon Listings (coming soon)",
+    description: "Proxy for Amazon listings API. Not yet implemented.",
+    inputSchema: z.object({}),
+  },
+  async () => {
+    return { content: [{ type: "text", text: "coming soon" }] };
+  }
+);
+
+// ─── Tool Manifest ────────────────────────────────────────────────────────────
+
+const TOOLS = {
+  ebay: ["ebay_api", "ebay_trading_api"],
+  amazon: ["amazon_orders", "amazon_listings"],
+};
+
+const TOOLS_COUNT = Object.values(TOOLS).reduce((n, arr) => n + arr.length, 0);
+
+// ─── Express App ──────────────────────────────────────────────────────────────
 
 const app = express();
 app.use(express.json());
@@ -16,7 +94,7 @@ const swaggerOptions = {
     info: {
       title: "ecommerce-mct-endpoints",
       version: "1.0.0",
-      description: "eBay REST & Trading API proxy with Swagger docs",
+      description: "eBay REST & Trading API proxy with MCP protocol support and Swagger docs",
     },
     servers: [{ url: process.env.BASE_URL || "https://delightful-fulfillment-production-dc1d.up.railway.app" }],
   },
@@ -32,7 +110,7 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
  * /health:
  *   get:
  *     summary: Health check
- *     description: Returns 200 OK when the service is running.
+ *     description: Returns service status including registered MCP tool count.
  *     tags: [Utility]
  *     responses:
  *       200:
@@ -45,12 +123,26 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
  *                 status:
  *                   type: string
  *                   example: ok
+ *                 service:
+ *                   type: string
+ *                   example: ecommerce-mct-endpoints
+ *                 tools_count:
+ *                   type: integer
+ *                   example: 4
+ *                 tools:
+ *                   type: object
  *                 timestamp:
  *                   type: string
  *                   format: date-time
  */
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", service: "ecommerce-mct-endpoints", timestamp: new Date().toISOString() });
+  res.json({
+    status: "ok",
+    service: "ecommerce-mct-endpoints",
+    tools_count: TOOLS_COUNT,
+    tools: TOOLS,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 /**
@@ -84,6 +176,69 @@ app.get("/openapi.json", (req, res) => {
  *         description: HTML page
  */
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+/**
+ * @openapi
+ * /mcp:
+ *   get:
+ *     summary: MCP status
+ *     description: Confirms the MCP Streamable HTTP transport is running.
+ *     tags: [MCP]
+ *     responses:
+ *       200:
+ *         description: MCP is up
+ *         content:
+ *           text/plain:
+ *             schema:
+ *               type: string
+ *               example: ecommerce-mct-endpoints MCP is up. Use POST /mcp (Streamable HTTP).
+ *   post:
+ *     summary: MCP Streamable HTTP transport
+ *     description: >
+ *       MCP protocol endpoint (Streamable HTTP transport). Send JSON-RPC 2.0
+ *       messages to invoke registered tools: ebay_api, ebay_trading_api,
+ *       amazon_orders, amazon_listings.
+ *     tags: [MCP]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: JSON-RPC 2.0 message
+ *             properties:
+ *               jsonrpc:
+ *                 type: string
+ *                 example: "2.0"
+ *               method:
+ *                 type: string
+ *                 example: tools/call
+ *               params:
+ *                 type: object
+ *               id:
+ *                 type: integer
+ *                 example: 1
+ *     responses:
+ *       200:
+ *         description: JSON-RPC 2.0 response
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ */
+app.get("/mcp", (req, res) => {
+  res.status(200).send("ecommerce-mct-endpoints MCP is up. Use POST /mcp (Streamable HTTP).");
+});
+
+app.post("/mcp", async (req, res) => {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  res.on("close", () => transport.close());
+  await mcpServer.connect(transport);
+  await transport.handleRequest(req, res, req.body);
+});
 
 /**
  * @openapi
@@ -126,11 +281,9 @@ app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
  *               properties:
  *                 status:
  *                   type: integer
- *                   description: HTTP status code returned by eBay.
  *                   example: 200
  *                 data:
  *                   type: object
- *                   description: Parsed JSON body returned by eBay.
  *                   additionalProperties: true
  *       400:
  *         description: Missing or invalid request fields
@@ -184,9 +337,7 @@ app.post("/ebay", async (req, res) => {
  *                 example: GetMyeBaySelling
  *               params:
  *                 type: object
- *                 description: >
- *                   Request body fields as a nested object matching the Trading API XML schema.
- *                   These are serialized as XML child elements of the root request element.
+ *                 description: Request body fields as a nested object matching the Trading API XML schema.
  *                 additionalProperties: true
  *                 example:
  *                   ActiveList:
@@ -205,11 +356,9 @@ app.post("/ebay", async (req, res) => {
  *               properties:
  *                 status:
  *                   type: integer
- *                   description: HTTP status code returned by eBay.
  *                   example: 200
  *                 data:
  *                   type: object
- *                   description: Parsed XML response body (unwrapped from {callName}Response).
  *                   additionalProperties: true
  *       400:
  *         description: Missing or invalid request fields
@@ -300,10 +449,11 @@ app.post("/sync/orders-to-zoho", (req, res) => {
   res.status(501).json({ message: "coming soon" });
 });
 
-// ─── Start ─────────────────────────────────────────────────────────────────────
+// ─── Start ────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`ecommerce-mct-endpoints running on port ${PORT}`);
   console.log(`Swagger UI: http://localhost:${PORT}/docs`);
+  console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
 });

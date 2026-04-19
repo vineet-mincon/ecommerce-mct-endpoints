@@ -12,11 +12,13 @@
   "license": "ISC",
   "description": "eBay REST & Trading API proxy with Swagger docs",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "axios": "^1.15.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fast-xml-parser": "^5.7.1",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^4.3.6"
   }
 }
