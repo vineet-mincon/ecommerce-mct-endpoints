@@ -1,9 +1,9 @@
-const axios = require("axios");
-const { XMLBuilder, XMLParser } = require("fast-xml-parser");
+import axios from "axios";
+import { XMLBuilder, XMLParser } from "fast-xml-parser";
 
-let tokenCache = null;
+let tokenCache: { token: string; expiresAt: number } | null = null;
 
-async function getAccessToken() {
+async function getAccessToken(): Promise<string> {
   if (tokenCache && Date.now() < tokenCache.expiresAt) {
     return tokenCache.token;
   }
@@ -35,13 +35,22 @@ async function getAccessToken() {
     }
   );
 
-  const token = resp.data.access_token;
-  const expiresIn = resp.data.expires_in ?? 7200;
+  const token = resp.data.access_token as string;
+  const expiresIn = (resp.data.expires_in as number) ?? 7200;
   tokenCache = { token, expiresAt: Date.now() + (expiresIn - 60) * 1000 };
   return token;
 }
 
-async function callEbayApi(method, path, body) {
+export interface EbayProxyResult {
+  status: number;
+  data: unknown;
+}
+
+export async function callEbayApi(
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<EbayProxyResult> {
   const token = await getAccessToken();
   const resp = await axios.request({
     method,
@@ -56,7 +65,10 @@ async function callEbayApi(method, path, body) {
   return { status: resp.status, data: resp.data };
 }
 
-async function callEbayTradingApi(callName, params = {}) {
+export async function callEbayTradingApi(
+  callName: string,
+  params: Record<string, unknown> = {}
+): Promise<EbayProxyResult> {
   const token = await getAccessToken();
   const rootName = `${callName}Request`;
   const requestObj = {
@@ -92,13 +104,11 @@ async function callEbayTradingApi(callName, params = {}) {
     parseTagValue: true,
     trimValues: true,
   });
-  const parsed = parser.parse(resp.data);
+  const parsed = parser.parse(resp.data as string);
   const unwrapped =
     parsed && typeof parsed === "object" && `${callName}Response` in parsed
-      ? parsed[`${callName}Response`]
+      ? (parsed as Record<string, unknown>)[`${callName}Response`]
       : parsed;
 
   return { status: resp.status, data: unwrapped };
 }
-
-module.exports = { callEbayApi, callEbayTradingApi };
