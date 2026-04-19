@@ -15,16 +15,13 @@ const mcpServer = new McpServer({
   version: "1.0.0",
 });
 
-mcpServer.registerTool(
+mcpServer.tool(
   "ebay_api",
+  "Call any eBay REST API endpoint. Uses a cached OAuth token auto-refreshed from EBAY_REFRESH_TOKEN.",
   {
-    title: "eBay API Proxy",
-    description: "Call any eBay REST API endpoint. Uses a cached OAuth token auto-refreshed from EBAY_REFRESH_TOKEN.",
-    inputSchema: z.object({
-      method: z.enum(["GET", "POST", "PUT", "DELETE"]),
-      path: z.string().regex(/^\//, "path must start with /"),
-      body: z.record(z.unknown()).optional(),
-    }),
+    method: z.enum(["GET", "POST", "PUT", "DELETE"]),
+    path: z.string().regex(/^\//, "path must start with /"),
+    body: z.record(z.unknown()).optional(),
   },
   async ({ method, path, body }) => {
     const result = await callEbayApi(method, path, body);
@@ -32,15 +29,12 @@ mcpServer.registerTool(
   }
 );
 
-mcpServer.registerTool(
+mcpServer.tool(
   "ebay_trading_api",
+  "Call any eBay Trading API (XML SOAP) operation. XML envelope is built automatically.",
   {
-    title: "eBay Trading API Proxy",
-    description: "Call any eBay Trading API (XML SOAP) operation. XML envelope is built automatically.",
-    inputSchema: z.object({
-      callName: z.string().min(1),
-      params: z.record(z.unknown()).optional(),
-    }),
+    callName: z.string().min(1),
+    params: z.record(z.unknown()).optional(),
   },
   async ({ callName, params }) => {
     const result = await callEbayTradingApi(callName, params ?? {});
@@ -48,25 +42,19 @@ mcpServer.registerTool(
   }
 );
 
-mcpServer.registerTool(
+mcpServer.tool(
   "amazon_orders",
-  {
-    title: "Amazon Orders (coming soon)",
-    description: "Proxy for Amazon orders API. Not yet implemented.",
-    inputSchema: z.object({}),
-  },
+  "Proxy for Amazon orders API. Not yet implemented.",
+  {},
   async () => {
     return { content: [{ type: "text", text: "coming soon" }] };
   }
 );
 
-mcpServer.registerTool(
+mcpServer.tool(
   "amazon_listings",
-  {
-    title: "Amazon Listings (coming soon)",
-    description: "Proxy for Amazon listings API. Not yet implemented.",
-    inputSchema: z.object({}),
-  },
+  "Proxy for Amazon listings API. Not yet implemented.",
+  {},
   async () => {
     return { content: [{ type: "text", text: "coming soon" }] };
   }
