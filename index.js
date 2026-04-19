@@ -18,7 +18,7 @@ const swaggerOptions = {
       version: "1.0.0",
       description: "eBay REST & Trading API proxy with Swagger docs",
     },
-    servers: [{ url: process.env.BASE_URL || "http://localhost:3000" }],
+    servers: [{ url: process.env.BASE_URL || "https://delightful-fulfillment-production-dc1d.up.railway.app" }],
   },
   apis: ["./index.js"],
 };
