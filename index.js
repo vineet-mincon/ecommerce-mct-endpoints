@@ -233,7 +233,6 @@ app.get("/mcp", (req, res) => {
 app.post("/mcp", async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
-    enableJsonResponse: true,
   });
   res.on("close", () => transport.close());
   await mcpServer.connect(transport);
