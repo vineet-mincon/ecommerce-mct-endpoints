@@ -6,16 +6,16 @@ import { swaggerDocument } from "./swagger.js";
 import { registerEbayTools } from "./tools/ebay.js";
 import { callEbayApi, callEbayTradingApi } from "./services/ebayClient.js";
 
-// ─── Server Init ──────────────────────────────────────────────────────────────
+// ─── Server Factory ───────────────────────────────────────────────────────────
 
-const server = new McpServer({
-  name: "ecommerce-mct-endpoints",
-  version: "1.0.0",
-});
-
-// ─── Register Tools ───────────────────────────────────────────────────────────
-
-registerEbayTools(server);   // ebay_api, ebay_trading_api, amazon_orders, amazon_listings
+function createServer(): McpServer {
+  const s = new McpServer({
+    name: "ecommerce-mct-endpoints",
+    version: "1.0.0",
+  });
+  registerEbayTools(s);
+  return s;
+}
 
 // ─── Tool Manifest ────────────────────────────────────────────────────────────
 
@@ -132,8 +132,9 @@ async function runHTTP(): Promise<void> {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });
+    const mcpServer = createServer();
     res.on("close", () => transport.close());
-    await server.connect(transport);
+    await mcpServer.connect(transport);
     await transport.handleRequest(req, res, req.body);
   });
 
@@ -147,7 +148,7 @@ async function runHTTP(): Promise<void> {
 
 async function runStdio(): Promise<void> {
   const transport = new StdioServerTransport();
-  await server.connect(transport);
+  await createServer().connect(transport);
   console.error("ecommerce-mct-endpoints running on stdio");
 }
 
